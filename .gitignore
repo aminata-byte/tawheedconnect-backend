@@ -1,0 +1,171 @@
+*.log
+.DS_Store
+.env
+.env.backup
+.env.production
+.phpactor.json
+.phpunit.result.cache
+/.fleet
+/.idea
+/.nova
+/.phpunit.cache
+/.vscode
+/.zed
+/auth.json
+/node_modules
+/public/build
+/public/hot
+/public/storage
+/storage/*.key
+/storage/pail
+/vendor
+Homestead.json
+Homestead.yaml
+Thumbs.db
+
+# 🕌 TawheedConnect - Application de Gestion des Associations Islamiques
+
+Application mobile Flutter avec backend Laravel pour la gestion des associations islamiques (Markaz) au Sénégal.
+
+## 📱 Fonctionnalités
+
+### Pour les Associations
+- ✅ Inscription et gestion de profil
+- ✅ Publication d'audios (cours, conférences)
+- ✅ Publication de vidéos
+- ✅ Gestion des événements
+- ✅ Gestion des Oustazes
+- ✅ Publication de quêtes
+- ✅ Gestion des admins
+- ✅ Statistiques (abonnés, vues)
+
+### Pour les Membres
+- 📖 Consultation des contenus
+- 🔔 Abonnement aux associations
+- 💰 Participation aux quêtes
+- 📅 Suivi des événements
+
+## 🛠️ Technologies
+
+### Frontend
+- **Flutter** (Dart)
+- **Dio** - Client HTTP
+- **Image Picker** - Sélection d'images
+- **Material Design** - Interface utilisateur
+
+### Backend
+- **Laravel 10+** (PHP)
+- **MySQL** - Base de données
+- **Sanctum** - Authentification API
+- **Storage** - Gestion des fichiers
+
+## 📦 Installation
+
+### Backend (Laravel)
+
+```bash
+cd backend
+
+# Installer les dépendances
+composer install
+
+# Copier le fichier d'environnement
+cp .env.example .env
+
+# Générer la clé de l'application
+php artisan key:generate
+
+# Configurer la base de données dans .env
+# DB_DATABASE=tawheedconnect
+# DB_USERNAME=root
+# DB_PASSWORD=
+
+# Lancer les migrations
+php artisan migrate
+
+# Créer le lien symbolique pour le storage
+php artisan storage:link
+
+# Lancer le serveur
+php artisan serve
+```
+
+### Frontend (Flutter)
+
+```bash
+cd frontend
+
+# Installer les dépendances
+flutter pub get
+
+# Configurer l'URL de l'API
+# Dans lib/core/services/api_service.dart
+# static const String baseUrl = 'http://127.0.0.1:8000/api';
+
+# Lancer l'application
+flutter run
+```
+
+## 📂 Structure du Projet
+
+```
+tawheedconnect/
+├── backend/               # Laravel API
+│   ├── app/
+│   │   ├── Http/
+│   │   │   └── Controllers/
+│   │   │       └── Api/
+│   │   └── Models/
+│   ├── database/
+│   │   └── migrations/
+│   └── routes/
+│       └── api.php
+│
+└── frontend/             # Flutter App
+    ├── lib/
+    │   ├── core/
+    │   │   ├── constants/
+    │   │   └── services/
+    │   └── features/
+    │       ├── auth/
+    │       ├── home/
+    │       ├── audio/
+    │       ├── video/
+    │       ├── events/
+    │       └── oustaze/
+    └── pubspec.yaml
+```
+
+## 🔐 Authentification
+
+L'application utilise Laravel Sanctum pour l'authentification par token :
+
+1. Inscription → Token généré
+2. Token sauvegardé dans ApiService (Singleton)
+3. Token envoyé dans chaque requête (`Authorization: Bearer TOKEN`)
+
+## 📱 Captures d'écran
+
+*(À ajouter)*
+
+## 🚀 Roadmap
+
+- [ ] Upload du logo lors de l'inscription
+- [ ] Persistance du token (SharedPreferences)
+- [ ] Intégration Wave/Orange Money pour les paiements
+- [ ] Envoi de SMS réels pour la vérification
+- [ ] Notifications push
+- [ ] Mode hors ligne
+- [ ] Recherche avancée
+
+## 👥 Contributeurs
+
+- **Développeur Principal** - Amina
+
+## 📄 Licence
+
+Ce projet est sous licence MIT.
+
+## 📞 Contact
+
+Pour toute question, contactez-nous à : contact@tawheedconnect.sn
