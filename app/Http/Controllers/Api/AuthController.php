@@ -10,77 +10,68 @@ use Illuminate\Support\Facades\Hash;
 use Illuminate\Validation\ValidationException;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Str;
-use Illuminate\Support\Facades\Storage;
 
 class AuthController extends Controller
 {
     /**
-     * Inscription d'un nouvel utilisateur (par numéro de téléphone)
+     * =========================
+     * INSCRIPTION
+     * =========================
      */
     public function register(Request $request)
     {
         $validated = $request->validate([
             'first_name' => 'required|string|max:255',
-            'last_name' => 'required|string|max:255',
-            'phone' => 'required|string|unique:users,phone',
-            'password' => 'required|string|min:6|confirmed',
-            'role' => 'required|in:member,association',
-            'email' => 'nullable|email|unique:users,email',
-            'city' => 'nullable|string',
+            'last_name'  => 'required|string|max:255',
+            'phone'      => 'required|string|unique:users,phone',
+            'password'   => 'required|string|min:6|confirmed',
+            'role'       => 'required|in:member,association',
+            'email'      => 'nullable|email|unique:users,email',
+            'city'       => 'nullable|string',
 
-            // Pour association
-            'association_name' => 'required_if:role,association|string|max:255',
+            // Association
+            'association_name'        => 'required_if:role,association|string|max:255',
             'association_description' => 'nullable|string',
-            'logo' => 'nullable|image|mimes:jpeg,png,jpg,gif|max:5120', // Max 5MB
+            'logo' => 'nullable|image|mimes:jpeg,png,jpg,gif|max:5120',
         ]);
 
-        // Générer un code de vérification
         $verificationCode = str_pad(random_int(0, 9999), 4, '0', STR_PAD_LEFT);
 
-        Log::info("VERIFICATION CODE INSCRIPTION for phone {$validated['phone']}: {$verificationCode}");
+        Log::info("VERIFICATION CODE REGISTER {$validated['phone']} : {$verificationCode}");
 
         $user = User::create([
-            'first_name' => $validated['first_name'],
-            'last_name' => $validated['last_name'],
-            'phone' => $validated['phone'],
-            'password' => Hash::make($validated['password']),
-            'role' => $validated['role'],
-            'email' => $validated['email'] ?? null,
-            'city' => $validated['city'] ?? null,
+            'first_name'        => $validated['first_name'],
+            'last_name'         => $validated['last_name'],
+            'phone'             => $validated['phone'],
+            'password'          => Hash::make($validated['password']),
+            'role'              => $validated['role'],
+            'email'             => $validated['email'] ?? null,
+            'city'              => $validated['city'] ?? null,
             'verification_code' => $verificationCode,
+            'is_active'         => true,
         ]);
 
-        // Si c'est une association, créer le profil association
+        // Association
         if ($validated['role'] === 'association') {
             $logoPath = null;
 
-            // Upload logo si présent
             if ($request->hasFile('logo')) {
                 $file = $request->file('logo');
                 $filename = 'logo_' . time() . '_' . Str::random(10) . '.' . $file->getClientOriginalExtension();
                 $logoPath = $file->storeAs('logos', $filename, 'public');
-
-                Log::info("Logo uploadé pour association: {$logoPath}");
             }
 
-            // Créer l'association
             $association = Association::create([
-                'user_id' => $user->id,
-                'name' => $request->association_name,
-                'description' => $request->association_description ?? null,
-                'logo' => $logoPath,
+                'user_id'     => $user->id,
+                'name'        => $validated['association_name'],
+                'description' => $validated['association_description'] ?? null,
+                'logo'        => $logoPath,
             ]);
 
-            // Ajouter l'association à l'utilisateur pour la réponse
-            $user->association = $association;
-
-            Log::info("Association créée avec ID: {$association->id}");
+            $user->load('association');
         }
 
-        // TODO: Envoyer SMS avec le code (plus tard)
-        // SMS::send($user->phone, "Votre code TawheedConnect: {$verificationCode}");
-
-        // Créer le token Sanctum
+        // Token Sanctum
         $token = $user->createToken('mobile-app')->plainTextToken;
 
         return response()->json([
@@ -88,19 +79,21 @@ class AuthController extends Controller
             'message' => 'Inscription réussie',
             'data' => [
                 'user' => $user,
-                'token' => $token,
-                'verification_code' => $verificationCode, // À retirer en production
-            ]
+            ],
+            'token' => $token,
+            'verification_code' => $verificationCode, // ❌ à retirer en production
         ], 201);
     }
 
     /**
-     * Connexion par numéro de téléphone
+     * =========================
+     * CONNEXION
+     * =========================
      */
     public function login(Request $request)
     {
         $request->validate([
-            'phone' => 'required|string',
+            'phone'    => 'required|string',
             'password' => 'required|string',
         ]);
 
@@ -115,19 +108,19 @@ class AuthController extends Controller
         if (!$user->is_active) {
             return response()->json([
                 'success' => false,
-                'message' => 'Votre compte est désactivé.',
+                'message' => 'Compte désactivé.',
             ], 403);
         }
 
-        // Si c'est une association, charger les infos association
+        // Charger association si besoin
         if ($user->role === 'association') {
             $user->load('association');
         }
 
-        // Supprimer les anciens tokens
+        // Supprimer anciens tokens
         $user->tokens()->delete();
 
-        // Créer un nouveau token
+        // Nouveau token
         $token = $user->createToken('mobile-app')->plainTextToken;
 
         return response()->json([
@@ -135,19 +128,57 @@ class AuthController extends Controller
             'message' => 'Connexion réussie',
             'data' => [
                 'user' => $user,
-                'token' => $token,
-            ]
+            ],
+            'token' => $token,
         ]);
     }
 
     /**
-     * Vérifier le numéro de téléphone avec le code SMS
+     * =========================
+     * UTILISATEUR CONNECTÉ
+     * =========================
+     */
+    public function me(Request $request)
+    {
+        $user = $request->user();
+
+        if ($user->role === 'association') {
+            $user->load('association');
+        }
+
+        return response()->json([
+            'success' => true,
+            'data' => [
+                'user' => $user,
+            ],
+        ]);
+    }
+
+    /**
+     * =========================
+     * DÉCONNEXION
+     * =========================
+     */
+    public function logout(Request $request)
+    {
+        $request->user()->currentAccessToken()->delete();
+
+        return response()->json([
+            'success' => true,
+            'message' => 'Déconnexion réussie',
+        ]);
+    }
+
+    /**
+     * =========================
+     * VÉRIFICATION TÉLÉPHONE
+     * =========================
      */
     public function verifyPhone(Request $request)
     {
         $request->validate([
             'phone' => 'required|string',
-            'code' => 'required|string',
+            'code'  => 'required|string',
         ]);
 
         $user = User::where('phone', $request->phone)
@@ -157,7 +188,7 @@ class AuthController extends Controller
         if (!$user) {
             return response()->json([
                 'success' => false,
-                'message' => 'Code de vérification invalide.',
+                'message' => 'Code invalide.',
             ], 400);
         }
 
@@ -168,15 +199,16 @@ class AuthController extends Controller
 
         return response()->json([
             'success' => true,
-            'message' => 'Numéro vérifié avec succès',
-            'data' => ['user' => $user]
+            'message' => 'Téléphone vérifié',
         ]);
     }
 
     /**
-     * Renvoyer le code de vérification
+     * =========================
+     * MOT DE PASSE OUBLIÉ
+     * =========================
      */
-    public function resendCode(Request $request)
+    public function forgotPassword(Request $request)
     {
         $request->validate([
             'phone' => 'required|string',
@@ -191,98 +223,31 @@ class AuthController extends Controller
             ], 404);
         }
 
-        $verificationCode = str_pad(random_int(0, 9999), 4, '0', STR_PAD_LEFT);
+        $code = str_pad(random_int(0, 9999), 4, '0', STR_PAD_LEFT);
 
-        Log::info("VERIFICATION CODE RENVOYÉ for phone {$request->phone}: {$verificationCode}");
-
-        $user->update([
-            'verification_code' => $verificationCode,
-        ]);
-
-        // TODO: Envoyer vrai SMS plus tard
-        return response()->json([
-            'success' => true,
-            'message' => 'Code renvoyé avec succès',
-            'data' => [
-                'verification_code' => $verificationCode // À retirer en prod
-            ]
-        ]);
-    }
-
-    /**
-     * Déconnexion (supprimer le token)
-     */
-    public function logout(Request $request)
-    {
-        $request->user()->currentAccessToken()->delete();
-
-        return response()->json([
-            'success' => true,
-            'message' => 'Déconnexion réussie'
-        ]);
-    }
-
-    /**
-     * Obtenir l'utilisateur connecté
-     */
-    public function me(Request $request)
-    {
-        $user = $request->user();
-
-        // Si c'est une association, charger les infos association
-        if ($user->role === 'association') {
-            $user->load('association');
-        }
-
-        return response()->json([
-            'success' => true,
-            'data' => ['user' => $user]
-        ]);
-    }
-
-    /**
-     * Mot de passe oublié
-     */
-    public function forgotPassword(Request $request)
-    {
-        $request->validate([
-            'phone' => 'required|string',
-        ]);
-
-        $user = User::where('phone', $request->phone)->first();
-
-        if (!$user) {
-            return response()->json([
-                'success' => false,
-                'message' => 'Numéro de téléphone introuvable.',
-            ], 404);
-        }
-
-        $resetCode = str_pad(random_int(0, 9999), 4, '0', STR_PAD_LEFT);
-
-        Log::info("RESET CODE for phone {$request->phone}: {$resetCode}");
+        Log::info("RESET CODE {$request->phone} : {$code}");
 
         $user->update([
-            'verification_code' => $resetCode,
+            'verification_code' => $code,
         ]);
 
         return response()->json([
             'success' => true,
-            'message' => 'Code de réinitialisation envoyé',
-            'data' => [
-                'reset_code' => $resetCode // À retirer en prod
-            ]
+            'message' => 'Code envoyé',
+            'reset_code' => $code, // ❌ à retirer en prod
         ]);
     }
 
     /**
-     * Réinitialiser le mot de passe
+     * =========================
+     * RESET MOT DE PASSE
+     * =========================
      */
     public function resetPassword(Request $request)
     {
         $request->validate([
-            'phone' => 'required|string',
-            'code' => 'required|string',
+            'phone'    => 'required|string',
+            'code'     => 'required|string',
             'password' => 'required|string|min:6|confirmed',
         ]);
 
@@ -304,7 +269,7 @@ class AuthController extends Controller
 
         return response()->json([
             'success' => true,
-            'message' => 'Mot de passe réinitialisé avec succès'
+            'message' => 'Mot de passe réinitialisé',
         ]);
     }
 }
