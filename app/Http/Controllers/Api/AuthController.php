@@ -14,12 +14,23 @@ use Illuminate\Support\Str;
 class AuthController extends Controller
 {
     /**
-     * =========================
+     * Utilitaire privé pour normaliser le numéro de téléphone
+     */
+    private function formatPhone($phone)
+    {
+        return str_replace(['+', ' '], '', $phone);
+    }
+
+    /**
      * INSCRIPTION
-     * =========================
      */
     public function register(Request $request)
     {
+        // On nettoie le téléphone avant la validation unique
+        if ($request->has('phone')) {
+            $request->merge(['phone' => $this->formatPhone($request->phone)]);
+        }
+
         $validated = $request->validate([
             'first_name' => 'required|string|max:255',
             'last_name'  => 'required|string|max:255',
@@ -28,8 +39,6 @@ class AuthController extends Controller
             'role'       => 'required|in:member,association',
             'email'      => 'nullable|email|unique:users,email',
             'city'       => 'nullable|string',
-
-            // Association
             'association_name'        => 'required_if:role,association|string|max:255',
             'association_description' => 'nullable|string',
             'logo' => 'nullable|image|mimes:jpeg,png,jpg,gif|max:5120',
@@ -51,17 +60,15 @@ class AuthController extends Controller
             'is_active'         => true,
         ]);
 
-        // Association
         if ($validated['role'] === 'association') {
             $logoPath = null;
-
             if ($request->hasFile('logo')) {
                 $file = $request->file('logo');
                 $filename = 'logo_' . time() . '_' . Str::random(10) . '.' . $file->getClientOriginalExtension();
                 $logoPath = $file->storeAs('logos', $filename, 'public');
             }
 
-            $association = Association::create([
+            Association::create([
                 'user_id'     => $user->id,
                 'name'        => $validated['association_name'],
                 'description' => $validated['association_description'] ?? null,
@@ -71,24 +78,19 @@ class AuthController extends Controller
             $user->load('association');
         }
 
-        // Token Sanctum
         $token = $user->createToken('mobile-app')->plainTextToken;
 
         return response()->json([
             'success' => true,
             'message' => 'Inscription réussie',
-            'data' => [
-                'user' => $user,
-            ],
+            'data' => ['user' => $user],
             'token' => $token,
-            'verification_code' => $verificationCode, // ❌ à retirer en production
+            'verification_code' => $verificationCode,
         ], 201);
     }
 
     /**
-     * =========================
      * CONNEXION
-     * =========================
      */
     public function login(Request $request)
     {
@@ -97,7 +99,8 @@ class AuthController extends Controller
             'password' => 'required|string',
         ]);
 
-        $user = User::where('phone', $request->phone)->first();
+        $phone = $this->formatPhone($request->phone);
+        $user = User::where('phone', $phone)->first();
 
         if (!$user || !Hash::check($request->password, $user->password)) {
             throw ValidationException::withMessages([
@@ -106,73 +109,51 @@ class AuthController extends Controller
         }
 
         if (!$user->is_active) {
-            return response()->json([
-                'success' => false,
-                'message' => 'Compte désactivé.',
-            ], 403);
+            return response()->json(['success' => false, 'message' => 'Compte désactivé.'], 403);
         }
 
-        // Charger association si besoin
         if ($user->role === 'association') {
             $user->load('association');
         }
 
-        // Supprimer anciens tokens
         $user->tokens()->delete();
-
-        // Nouveau token
         $token = $user->createToken('mobile-app')->plainTextToken;
 
         return response()->json([
             'success' => true,
             'message' => 'Connexion réussie',
-            'data' => [
-                'user' => $user,
-            ],
+            'data' => ['user' => $user],
             'token' => $token,
         ]);
     }
 
     /**
-     * =========================
      * UTILISATEUR CONNECTÉ
-     * =========================
      */
     public function me(Request $request)
     {
         $user = $request->user();
-
         if ($user->role === 'association') {
             $user->load('association');
         }
 
         return response()->json([
             'success' => true,
-            'data' => [
-                'user' => $user,
-            ],
+            'data' => ['user' => $user],
         ]);
     }
 
     /**
-     * =========================
      * DÉCONNEXION
-     * =========================
      */
     public function logout(Request $request)
     {
         $request->user()->currentAccessToken()->delete();
-
-        return response()->json([
-            'success' => true,
-            'message' => 'Déconnexion réussie',
-        ]);
+        return response()->json(['success' => true, 'message' => 'Déconnexion réussie']);
     }
 
     /**
-     * =========================
      * VÉRIFICATION TÉLÉPHONE
-     * =========================
      */
     public function verifyPhone(Request $request)
     {
@@ -181,15 +162,13 @@ class AuthController extends Controller
             'code'  => 'required|string',
         ]);
 
-        $user = User::where('phone', $request->phone)
+        $phone = $this->formatPhone($request->phone);
+        $user = User::where('phone', $phone)
             ->where('verification_code', $request->code)
             ->first();
 
         if (!$user) {
-            return response()->json([
-                'success' => false,
-                'message' => 'Code invalide.',
-            ], 400);
+            return response()->json(['success' => false, 'message' => 'Code invalide.'], 400);
         }
 
         $user->update([
@@ -197,16 +176,11 @@ class AuthController extends Controller
             'verification_code' => null,
         ]);
 
-        return response()->json([
-            'success' => true,
-            'message' => 'Téléphone vérifié',
-        ]);
+        return response()->json(['success' => true, 'message' => 'Téléphone vérifié']);
     }
 
     /**
-     * =========================
      * MOT DE PASSE OUBLIÉ
-     * =========================
      */
     public function forgotPassword(Request $request)
     {
@@ -214,34 +188,27 @@ class AuthController extends Controller
             'phone' => 'required|string',
         ]);
 
-        $user = User::where('phone', $request->phone)->first();
+        $phone = $this->formatPhone($request->phone);
+        $user = User::where('phone', $phone)->first();
 
         if (!$user) {
-            return response()->json([
-                'success' => false,
-                'message' => 'Utilisateur introuvable.',
-            ], 404);
+            return response()->json(['success' => false, 'message' => 'Utilisateur introuvable.'], 404);
         }
 
         $code = str_pad(random_int(0, 9999), 4, '0', STR_PAD_LEFT);
+        Log::info("RESET CODE {$phone} : {$code}");
 
-        Log::info("RESET CODE {$request->phone} : {$code}");
-
-        $user->update([
-            'verification_code' => $code,
-        ]);
+        $user->update(['verification_code' => $code]);
 
         return response()->json([
             'success' => true,
             'message' => 'Code envoyé',
-            'reset_code' => $code, // ❌ à retirer en prod
+            'reset_code' => $code,
         ]);
     }
 
     /**
-     * =========================
      * RESET MOT DE PASSE
-     * =========================
      */
     public function resetPassword(Request $request)
     {
@@ -251,15 +218,13 @@ class AuthController extends Controller
             'password' => 'required|string|min:6|confirmed',
         ]);
 
-        $user = User::where('phone', $request->phone)
+        $phone = $this->formatPhone($request->phone);
+        $user = User::where('phone', $phone)
             ->where('verification_code', $request->code)
             ->first();
 
         if (!$user) {
-            return response()->json([
-                'success' => false,
-                'message' => 'Code invalide.',
-            ], 400);
+            return response()->json(['success' => false, 'message' => 'Code invalide.'], 400);
         }
 
         $user->update([
@@ -267,9 +232,6 @@ class AuthController extends Controller
             'verification_code' => null,
         ]);
 
-        return response()->json([
-            'success' => true,
-            'message' => 'Mot de passe réinitialisé',
-        ]);
+        return response()->json(['success' => true, 'message' => 'Mot de passe réinitialisé']);
     }
 }
