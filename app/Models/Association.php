@@ -68,4 +68,8 @@ class Association extends Model
     {
         return $this->hasMany(Video::class);
     }
+    public function oustazes()
+    {
+        return $this->hasMany(Oustaze::class);
+    }
 }

@@ -128,7 +128,7 @@ class AuthController extends Controller
     }
 
     /**
-     * UTILISATEUR CONNECTÉ
+     * UTILISATEUR CONNECTÉ (me)
      */
     public function me(Request $request)
     {
@@ -141,6 +141,14 @@ class AuthController extends Controller
             'success' => true,
             'data' => ['user' => $user],
         ]);
+    }
+
+    /**
+     * UTILISATEUR CONNECTÉ (user) - Alias de me()
+     */
+    public function user(Request $request)
+    {
+        return $this->me($request);
     }
 
     /**
@@ -180,6 +188,41 @@ class AuthController extends Controller
     }
 
     /**
+     * RENVOYER LE CODE DE VÉRIFICATION
+     */
+    public function resendCode(Request $request)
+    {
+        $request->validate([
+            'phone' => 'required|string'
+        ]);
+
+        $phone = $this->formatPhone($request->phone);
+        $user = User::where('phone', $phone)->first();
+
+        if (!$user) {
+            return response()->json([
+                'success' => false,
+                'message' => 'Utilisateur non trouvé'
+            ], 404);
+        }
+
+        // Générer un nouveau code de vérification
+        $verificationCode = str_pad(random_int(0, 9999), 4, '0', STR_PAD_LEFT);
+
+        $user->verification_code = $verificationCode;
+        $user->save();
+
+        // Log du code (en production, envoyez par SMS)
+        Log::info("VERIFICATION CODE RESEND {$phone} : {$verificationCode}");
+
+        return response()->json([
+            'success' => true,
+            'message' => 'Code de vérification renvoyé',
+            'verification_code' => $verificationCode // À retirer en production
+        ], 200);
+    }
+
+    /**
      * MOT DE PASSE OUBLIÉ
      */
     public function forgotPassword(Request $request)
@@ -203,7 +246,7 @@ class AuthController extends Controller
         return response()->json([
             'success' => true,
             'message' => 'Code envoyé',
-            'reset_code' => $code,
+            'verification_code' => $code,
         ]);
     }
 

@@ -29,6 +29,6 @@ class Answer extends Model
 
     public function oustaze()
     {
-        return $this->belongsTo(User::class, 'oustaze_id');
+        return $this->belongsTo(Oustaze::class);
     }
 }
